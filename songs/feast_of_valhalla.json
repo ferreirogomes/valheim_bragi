@@ -1,0 +1,10 @@
+{
+  "id": "feast_of_valhalla",
+  "name": "Feast of Valhalla",
+  "author": "Traditional Norse",
+  "description": "A boisterous feast-hall melody celebrating the glory of battle and the hospitality of the einherjar. All instruments welcome!",
+  "audioFile": "feast_of_valhalla.ogg",
+  "duration": 110,
+  "instruments": [],
+  "mood": "Triumphant"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "skalds_lament",
+  "name": "Skald's Lament",
+  "author": "Traditional Norse",
+  "description": "A melancholic flute piece mourning fallen shield-brothers. Often played at funerals and remembrance feasts.",
+  "audioFile": "skalds_lament.ogg",
+  "duration": 150,
+  "instruments": ["BoneFlute"],
+  "mood": "Melancholic"
+}

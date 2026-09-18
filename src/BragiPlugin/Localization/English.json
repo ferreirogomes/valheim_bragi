@@ -1,0 +1,14 @@
+# Bragi — Localization Strings
+# Add this file as an embedded resource and reference from Localization manager
+# or drop into BepInEx/config/Bragi/Localization/English.json
+
+{
+  "item_bragi_lyre":            "Lyre",
+  "item_bragi_lyre_desc":       "A small plucked string instrument used by Viking skalds to accompany sagas and poetry. Based on lyre fragments found in Ribe, Denmark (8th century).",
+  "item_bragi_boneflute":       "Bone Flute",
+  "item_bragi_boneflute_desc":  "Carved from the leg bone of a deer. Among the most common musical finds from Viking-Age Scandinavia. A haunting, breathy tone.",
+  "item_bragi_jawharp":         "Jaw Harp",
+  "item_bragi_jawharp_desc":    "A small iron instrument held against the teeth and plucked. Produces a buzzing, resonant drone said to induce trance states for seiðr rituals.",
+  "se_skaldsblessing_name":     "Skald's Blessing",
+  "se_skaldsblessing_tooltip":  "The music fills your spirit with energy. Stamina regenerates faster."
+}

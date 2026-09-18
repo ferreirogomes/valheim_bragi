@@ -1,0 +1,10 @@
+{
+  "id": "odin_call",
+  "name": "Odin's Call",
+  "author": "Traditional Norse",
+  "description": "A slow, haunting melody evoking the Allfather's wandering across the nine realms. Perfect for quiet evenings by the longhouse fire.",
+  "audioFile": "odin_call.ogg",
+  "duration": 120,
+  "instruments": ["Lyre"],
+  "mood": "Solemn"
+}

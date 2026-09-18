@@ -1,0 +1,10 @@
+{
+  "id": "winter_night",
+  "name": "Winter Night",
+  "author": "Traditional Norse",
+  "description": "A quiet, contemplative melody for long dark nights in Midwinter. The sound of wind through pine trees and distant wolves.",
+  "audioFile": "winter_night.ogg",
+  "duration": 165,
+  "instruments": ["BoneFlute", "JawHarp"],
+  "mood": "Peaceful"
+}

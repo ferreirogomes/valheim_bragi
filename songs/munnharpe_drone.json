@@ -1,0 +1,10 @@
+{
+  "id": "munnharpe_drone",
+  "name": "Munnharpe Drone",
+  "author": "Traditional Norse",
+  "description": "The buzzing, hypnotic drone of the jaw harp (munnharpe). A trance-inducing sound said to call spirits and aid seiðr.",
+  "audioFile": "munnharpe_drone.ogg",
+  "duration": 180,
+  "instruments": ["JawHarp"],
+  "mood": "Mystical"
+}

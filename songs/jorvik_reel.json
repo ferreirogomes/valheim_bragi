@@ -1,0 +1,10 @@
+{
+  "id": "jorvik_reel",
+  "name": "Jorvik Reel",
+  "author": "Traditional Norse",
+  "description": "A lively folk dance tune from the markets of Jorvik (York). Upbeat enough to set feet tapping around the feast table.",
+  "audioFile": "jorvik_reel.ogg",
+  "duration": 95,
+  "instruments": ["BoneFlute", "Lyre"],
+  "mood": "Joyful"
+}

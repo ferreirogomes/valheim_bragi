@@ -1,0 +1,99 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Valheim mods target .NET Framework 4.8 (same as the game) -->
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>Bragi</AssemblyName>
+    <RootNamespace>Bragi</RootNamespace>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- Change this to your actual Valheim path if different -->
+    <ValheimDir Condition="'$(ValheimDir)' == ''">D:\SteamLibrary\steamapps\common\Valheim</ValheimDir>
+    <BepInExDir>$(ValheimDir)\BepInEx</BepInExDir>
+    <ManagedDir>$(ValheimDir)\valheim_Data\Managed</ManagedDir>
+  </PropertyGroup>
+
+  <!-- Post-build: copy .dll to BepInEx plugins folder for quick testing -->
+  <Target Name="DeployToBepInEx" AfterTargets="Build" Condition="Exists('$(BepInExDir)')">
+    <MakeDir Directories="$(BepInExDir)\plugins\Bragi\resources" />
+    <Copy SourceFiles="$(OutputPath)\Bragi.dll"
+          DestinationFolder="$(BepInExDir)\plugins\Bragi\" />
+    <!-- Copy song JSONs -->
+    <Copy SourceFiles="@(SongFiles)"
+          DestinationFolder="$(BepInExDir)\config\Bragi\songs\" />
+    <Message Text="✅ Bragi deployed to BepInEx plugins" Importance="high" />
+  </Target>
+
+  <ItemGroup Label="SongFiles">
+    <SongFiles Include="..\..\songs\*.json" />
+  </ItemGroup>
+
+  <!-- ======= BepInEx & Jotunn via NuGet (when BepInEx not locally installed) ======= -->
+  <ItemGroup Condition="!Exists('$(BepInExDir)')">
+    <!-- BepInEx feed: https://nuget.bepinex.dev/v3/index.json -->
+    <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.Core" Version="5.*" ExcludeAssets="runtime" />
+    <!-- Jotunn is published to nuget.org as JotunnLib -->
+    <PackageReference Include="JotunnLib" Version="2.*" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- ======= BepInEx & Jotunn (Local Override) ======= -->
+  <ItemGroup Condition="Exists('$(BepInExDir)')">
+    <Reference Include="BepInEx">
+      <HintPath>$(BepInExDir)\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HarmonyX">
+      <HintPath>$(BepInExDir)\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Jotunn">
+      <HintPath>$(BepInExDir)\plugins\Jotunn\Jotunn.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- ======= Unity & Valheim Game DLLs (Local Override) ======= -->
+  <ItemGroup Condition="Exists('$(ManagedDir)')">
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(ManagedDir)\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(ManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(ManagedDir)\UnityEngine.AnimationModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="assembly_valheim">
+      <HintPath>$(ManagedDir)\assembly_valheim.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(ManagedDir)\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
