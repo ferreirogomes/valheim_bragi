@@ -93,16 +93,19 @@ namespace Bragi
         }
     }
 
-    // ── Harmony patch: register RPCs as soon as ZRoutedRpc is alive ───────────
+    // ── Harmony patch: register RPCs after ZNet.Awake creates ZRoutedRpc ────────
+    // ZRoutedRpc has no Awake() — ZNet.Awake() is the point at which
+    // ZRoutedRpc.instance is first assigned and ready to register handlers.
 
-    [HarmonyLib.HarmonyPatch(typeof(ZRoutedRpc), "Awake")]
-    internal static class ZRoutedRpcAwakePatch
+    [HarmonyLib.HarmonyPatch(typeof(ZNet), "Awake")]
+    internal static class ZNetAwakePatch
     {
         [HarmonyLib.HarmonyPostfix]
-        private static void Postfix(ZRoutedRpc __instance)
+        private static void Postfix()
         {
-            __instance.Register<string>(MusicSync.RPC_PLAY, MusicSync.OnRemotePlay);
-            __instance.Register(MusicSync.RPC_STOP,         MusicSync.OnRemoteStop);
+            if (ZRoutedRpc.instance == null) return;
+            ZRoutedRpc.instance.Register<string>(MusicSync.RPC_PLAY, MusicSync.OnRemotePlay);
+            ZRoutedRpc.instance.Register(MusicSync.RPC_STOP,         MusicSync.OnRemoteStop);
             BragiPlugin.Log.LogInfo("🎵 MusicSync RPCs registered.");
         }
     }
