@@ -14,17 +14,21 @@ namespace Bragi
     ///
     /// Network data sent: song ID (string) — lightweight. Audio clips are loaded
     /// client-side from their local song library, so no audio data crosses the wire.
+    ///
+    /// RPC registration is deferred to ZRoutedRpc.Awake via Harmony to guarantee
+    /// the instance is initialised before we try to use it.
     /// </summary>
     public static class MusicSync
     {
-        private const string RPC_PLAY = "Bragi_PlaySong";
-        private const string RPC_STOP = "Bragi_StopSong";
+        internal const string RPC_PLAY = "Bragi_PlaySong";
+        internal const string RPC_STOP = "Bragi_StopSong";
 
+        /// <summary>Called from Plugin.Awake — just marks that we need RPCs. Actual
+        /// registration happens in <see cref="ZRoutedRpcAwakePatch"/>.</summary>
         public static void Init()
         {
-            ZRoutedRpc.instance.Register<string>(RPC_PLAY, OnRemotePlay);
-            ZRoutedRpc.instance.Register(RPC_STOP,         OnRemoteStop);
-            BragiPlugin.Log.LogInfo("🎵 MusicSync RPCs registered.");
+            // Nothing to do here — RPCs are registered in ZRoutedRpcAwakePatch below.
+            BragiPlugin.Log.LogInfo("🎵 MusicSync ready (RPCs will register on ZRoutedRpc.Awake).");
         }
 
         // ── Send ──────────────────────────────────────────────────────────────
@@ -45,7 +49,7 @@ namespace Bragi
 
         // ── Receive ───────────────────────────────────────────────────────────
 
-        private static void OnRemotePlay(long senderPeerId, string songId)
+        internal static void OnRemotePlay(long senderPeerId, string songId)
         {
             // Ignore if it's our own RPC echo
             if (senderPeerId == ZDOMan.GetSessionID()) return;
@@ -65,7 +69,7 @@ namespace Bragi
             RemoteAudioSource.PlayAt(senderPlayer, song);
         }
 
-        private static void OnRemoteStop(long senderPeerId)
+        internal static void OnRemoteStop(long senderPeerId)
         {
             if (senderPeerId == ZDOMan.GetSessionID()) return;
 
@@ -86,6 +90,20 @@ namespace Bragi
                     return player;
             }
             return null;
+        }
+    }
+
+    // ── Harmony patch: register RPCs as soon as ZRoutedRpc is alive ───────────
+
+    [HarmonyLib.HarmonyPatch(typeof(ZRoutedRpc), "Awake")]
+    internal static class ZRoutedRpcAwakePatch
+    {
+        [HarmonyLib.HarmonyPostfix]
+        private static void Postfix(ZRoutedRpc __instance)
+        {
+            __instance.Register<string>(MusicSync.RPC_PLAY, MusicSync.OnRemotePlay);
+            __instance.Register(MusicSync.RPC_STOP,         MusicSync.OnRemoteStop);
+            BragiPlugin.Log.LogInfo("🎵 MusicSync RPCs registered.");
         }
     }
 

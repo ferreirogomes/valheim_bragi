@@ -41,10 +41,25 @@ namespace Bragi
             if (Instance == this) Instance = null;
         }
 
+        /// <summary>Cached parsed KeyCode from config. Re-parsed if config value changes.</summary>
+        private KeyCode _cachedMenuKey = KeyCode.G;
+        private string  _cachedMenuKeyStr = "G";
+
+        private KeyCode GetMenuKey()
+        {
+            var raw = BragiConfig.OpenMenuKey.Value;
+            if (raw != _cachedMenuKeyStr)
+            {
+                _cachedMenuKeyStr = raw;
+                _cachedMenuKey = System.Enum.TryParse<KeyCode>(raw, ignoreCase: true, out var k) ? k : KeyCode.G;
+            }
+            return _cachedMenuKey;
+        }
+
         private void Update()
         {
             // Open / close on configured key while instrument equipped
-            if (Input.GetKeyDown(BragiConfig.OpenMenuKey.Value) && IsInstrumentEquipped())
+            if (Input.GetKeyDown(GetMenuKey()) && IsInstrumentEquipped())
             {
                 Toggle();
             }

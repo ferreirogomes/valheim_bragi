@@ -3,7 +3,8 @@
 
 param(
     [string]$Configuration = "Debug",
-    [string]$ValheimDir = "D:\SteamLibrary\steamapps\common\Valheim"
+    # r2modman Default profile — where BepInEx + Jotunn are actually installed
+    [string]$ValheimDir = "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Default"
 )
 
 $ErrorActionPreference = "Stop"

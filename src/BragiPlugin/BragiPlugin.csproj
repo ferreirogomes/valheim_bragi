@@ -10,25 +10,38 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 
-    <!-- Change this to your actual Valheim path if different -->
-    <ValheimDir Condition="'$(ValheimDir)' == ''">D:\SteamLibrary\steamapps\common\Valheim</ValheimDir>
-    <BepInExDir>$(ValheimDir)\BepInEx</BepInExDir>
-    <ManagedDir>$(ValheimDir)\valheim_Data\Managed</ManagedDir>
+    <!-- r2modman Default profile — BepInEx lives here -->
+    <ValheimDir Condition="'$(ValheimDir)' == ''">$(APPDATA)\r2modmanPlus-local\Valheim\profiles\Default</ValheimDir>
+    <!-- Override BepInExDir/ManagedDir individually if your layout differs -->
+    <BepInExDir Condition="'$(BepInExDir)' == ''">$(ValheimDir)\BepInEx</BepInExDir>
+    <!-- Game managed DLLs live in the Steam install, NOT the r2modman profile -->
+    <ManagedDir Condition="'$(ManagedDir)' == ''">D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed</ManagedDir>
   </PropertyGroup>
 
   <!-- Post-build: copy .dll to BepInEx plugins folder for quick testing -->
   <Target Name="DeployToBepInEx" AfterTargets="Build" Condition="Exists('$(BepInExDir)')">
     <MakeDir Directories="$(BepInExDir)\plugins\Bragi\resources" />
+    <MakeDir Directories="$(BepInExDir)\config\Bragi\Localization" />
     <Copy SourceFiles="$(OutputPath)\Bragi.dll"
           DestinationFolder="$(BepInExDir)\plugins\Bragi\" />
     <!-- Copy song JSONs -->
     <Copy SourceFiles="@(SongFiles)"
           DestinationFolder="$(BepInExDir)\config\Bragi\songs\" />
+    <!-- Copy localization -->
+    <Copy SourceFiles="Localization\English.json"
+          DestinationFolder="$(BepInExDir)\config\Bragi\Localization\" />
     <Message Text="✅ Bragi deployed to BepInEx plugins" Importance="high" />
   </Target>
 
   <ItemGroup Label="SongFiles">
     <SongFiles Include="..\..\songs\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed the localization file into the DLL so it's always available -->
+    <EmbeddedResource Include="Localization\English.json">
+      <LogicalName>Bragi.Localization.English.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- ======= BepInEx & Jotunn via NuGet (when BepInEx not locally installed) ======= -->
@@ -51,7 +64,8 @@
       <Private>false</Private>
     </Reference>
     <Reference Include="Jotunn">
-      <HintPath>$(BepInExDir)\plugins\Jotunn\Jotunn.dll</HintPath>
+      <!-- r2modman installs Jotunn under ValheimModding-Jotunn; plain installs use just Jotunn -->
+      <HintPath>$(BepInExDir)\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
@@ -92,6 +106,25 @@
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(ManagedDir)\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Input system (legacy Input class) -->
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- UnityWebRequest audio (UnityWebRequestMultimedia, DownloadHandlerAudioClip) -->
+    <Reference Include="UnityEngine.UnityWebRequestModule">
+      <HintPath>$(ManagedDir)\UnityEngine.UnityWebRequestModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule">
+      <HintPath>$(ManagedDir)\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- IMGUI text rendering (FontStyle, TextAnchor) -->
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(ManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
