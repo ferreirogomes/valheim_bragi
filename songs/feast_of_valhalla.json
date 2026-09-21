@@ -2,9 +2,15 @@
   "id": "feast_of_valhalla",
   "name": "Feast of Valhalla",
   "author": "Traditional Norse",
-  "description": "A boisterous feast-hall melody celebrating the glory of battle and the hospitality of the einherjar. All instruments welcome!",
+  "description": "A boisterous feast-hall melody celebrating the glory of battle and the hospitality of the einherjar.",
   "audioFile": "feast_of_valhalla.ogg",
   "duration": 110,
   "instruments": [],
-  "mood": "Triumphant"
+  "mood": "Triumphant",
+  "_tracks_note": "Add separate stem files alongside this JSON and list them below to enable per-instrument ensemble play. Each player hears only their instrument's part.",
+  "tracks": {
+    "_example_BoneFlute": "feast_of_valhalla_flute.ogg",
+    "_example_Lyre":      "feast_of_valhalla_lyre.ogg",
+    "_example_JawHarp":   "feast_of_valhalla_jawharp.ogg"
+  }
 }

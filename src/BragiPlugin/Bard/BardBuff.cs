@@ -4,20 +4,23 @@ using UnityEngine;
 namespace Bragi
 {
     /// <summary>
-    /// Implements the "Skald's Blessing" status effect — a bard buff applied to
-    /// all players within BragiConfig.BuffRadius metres while music is playing.
+    /// Implements the "Skald's Blessing" effect by augmenting Valheim's native
+    /// SE_Rested status effect — no extra icon, no clutter.
     ///
-    /// Effect: +15% stamina regeneration (configurable), lasting BragiConfig.BuffDuration
-    /// seconds after the music stops (like a campfire warmth bonus).
+    /// While music is playing, nearby players who already have the Rested buff
+    /// get their remaining time extended every pulse. Players without the buff
+    /// receive the vanilla Rested status directly from ObjectDB.
     ///
-    /// Implementation approach: We apply a custom StatusEffect (SE_Rested-style)
-    /// to each nearby Player's SEMan using Harmony to hook into the existing
-    /// status effect pipeline — no new classes required for v1.
+    /// This matches Enshrouded's approach: music refreshes and extends the
+    /// existing rest bonus rather than stacking a separate icon.
     /// </summary>
     public static class BardBuff
     {
-        private const string BUFF_NAME = "SE_SkaldsBlessing";
         private static Coroutine? _buffLoop;
+
+        // Bonus seconds to add to Rested TTL on each 5-second buff pulse
+        private const float RESTED_EXTENSION_PER_PULSE = 10f;
+        private const float RESTED_MAX_EXTENSION       = 1200f; // 20 minutes cap (vanilla max)
 
         // ── Public API ────────────────────────────────────────────────────────
 
@@ -32,17 +35,13 @@ namespace Bragi
             if (_buffLoop != null && Player.m_localPlayer != null)
                 Player.m_localPlayer.StopCoroutine(_buffLoop);
             _buffLoop = null;
-
-            // Let the existing SE expire naturally (it has a TTL)
-            // Players keep the buff for BuffDuration seconds after music stops.
         }
 
         // ── Buff Loop ─────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Every 5 seconds while playing, apply/refresh the buff to nearby players.
-        /// Using a refresh loop (rather than one-shot) ensures new players who
-        /// walk into range pick it up without any additional logic.
+        /// Every 5 seconds while music plays, refresh or extend the vanilla Rested
+        /// buff on all players within buff radius.
         /// </summary>
         private static System.Collections.IEnumerator BuffLoop()
         {
@@ -59,65 +58,50 @@ namespace Bragi
             if (origin == null) return;
 
             float radius = BragiConfig.BuffRadius.Value;
-
             foreach (var player in Player.GetAllPlayers())
             {
                 if (Vector3.Distance(player.transform.position, origin.transform.position) > radius)
                     continue;
-
-                ApplyBuff(player);
+                ExtendRestBuff(player);
             }
         }
 
-        private static void ApplyBuff(Player player)
+        // ── Rested Extension ──────────────────────────────────────────────────
+
+        private static void ExtendRestBuff(Player player)
         {
             var seman = player.GetSEMan();
             if (seman == null) return;
 
-            // Use SE_Rested as a base since it already handles comfort/regen bonuses.
-            var buffHash = BUFF_NAME.GetHashCode();
-            var se = ObjectDB.instance?.GetStatusEffect(buffHash);
-            if (se == null)
-            {
-                // First time: create and register the status effect
-                se = CreateSkaldsBlessing();
-                if (se == null) return;
-                ObjectDB.instance?.m_StatusEffects.Add(se);
-            }
+            int restedHash = "Rested".GetHashCode();
 
-            // Refresh or apply
-            if (seman.HaveStatusEffect(buffHash))
+            if (seman.HaveStatusEffect(restedHash))
             {
-                seman.GetStatusEffect(buffHash)?.ResetTime();
+                // Player already has Rested — extend its remaining duration
+                var se = seman.GetStatusEffect(restedHash);
+                if (se != null)
+                {
+                    // Get current remaining time, add our extension, clamp to max
+                    float remaining = se.GetRemaningTime(); // Valheim's typo: "Remaning"
+                    float newTtl    = Mathf.Min(RESTED_MAX_EXTENSION,
+                        remaining + RESTED_EXTENSION_PER_PULSE
+                        + BragiConfig.StaminaRegenBonus.Value * 60f);
+                    se.m_ttl = newTtl;
+                    // Reset the internal timer so the SE starts counting down from the new TTL
+                    se.ResetTime();
+                }
             }
             else
             {
-                seman.AddStatusEffect(se);
+                // Player doesn't have Rested yet — grant the vanilla Rested effect
+                var restedSE = ObjectDB.instance?.GetStatusEffect(restedHash);
+                if (restedSE != null)
+                {
+                    seman.AddStatusEffect(restedSE);
+                    player.Message(MessageHud.MessageType.TopLeft,
+                        "$se_rested_start"); // Uses vanilla Rested start message
+                }
             }
-        }
-
-        // ── Status Effect Creation ────────────────────────────────────────────
-
-        private static StatusEffect? CreateSkaldsBlessing()
-        {
-            // SE_Rested is a SE_Stats subclass which has stamina regen multiplier.
-            // We find it, clone it, then override the multiplier value.
-            var restedSE = ObjectDB.instance?.GetStatusEffect("Rested".GetHashCode()) as SE_Stats;
-            if (restedSE == null)
-            {
-                BragiPlugin.Log.LogWarning("Could not find SE_Rested (SE_Stats) to clone Skald's Blessing from.");
-                return null;
-            }
-
-            var se = UnityEngine.Object.Instantiate(restedSE);
-            se.name                    = BUFF_NAME;
-            se.m_name                  = "$se_skaldsblessing_name";
-            se.m_tooltip               = "$se_skaldsblessing_tooltip";
-            se.m_ttl                   = BragiConfig.BuffDuration.Value;
-            // SE_Stats exposes stamina regen as m_staminaRegenMultiplier
-            se.m_staminaRegenMultiplier = 1f + BragiConfig.StaminaRegenBonus.Value;
-
-            return se;
         }
     }
 

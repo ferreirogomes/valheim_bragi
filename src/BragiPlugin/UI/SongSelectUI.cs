@@ -1,3 +1,4 @@
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,41 +9,55 @@ namespace Bragi
     /// while an instrument is equipped. Displays a scrollable list of compatible songs
     /// styled to match Valheim's native dark-wood UI aesthetic.
     ///
-    /// Built with Valheim's IMGUI / Unity UI stack to avoid external dependencies.
+    /// Key improvements over v1:
+    ///   - Fixed: GUIUtility.hotControl no longer blocks button clicks (all songs selectable)
+    ///   - Fixed: Cursor is properly unlocked when the menu opens, locked again when closed
+    ///   - Fixed: Player.TakeInput is blocked via Harmony while the UI is open (no accidental
+    ///     weapon swings or camera spins)
+    ///   - New: Ensemble "Join Session" banner when another player is already performing nearby
+    ///     — players can 1-click join without having to choose a song
+    ///   - New: Stem indicator dots showing which instruments have dedicated stems per song
     /// </summary>
     public class SongSelectUI : MonoBehaviour
     {
-        public static SongSelectUI? Instance { get; private set; }
+        public static SongSelectUI? Instance      { get; private set; }
+        public static bool          IsOpen        { get; private set; }
 
-        private bool _isOpen;
         private System.Collections.Generic.List<SongData> _availableSongs =
             new System.Collections.Generic.List<SongData>();
 
         // IMGUI layout constants
-        private const int PanelW = 420;
-        private const int PanelH = 520;
-        private Rect _panelRect;
+        private const int PanelW = 460;
+        private const int PanelH = 560;
+        private Rect    _panelRect;
         private Vector2 _scrollPos;
-        private int _selectedIndex = -1;
+        private int     _selectedIndex = -1;
 
         // ── Unity lifecycle ───────────────────────────────────────────────────
 
         private void Awake()
         {
             Instance = this;
+            CenterPanel();
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            ForceClose(); // ensure cursor is restored if destroyed while open
+        }
+
+        private void CenterPanel()
+        {
             _panelRect = new Rect(
                 (Screen.width  - PanelW) / 2f,
                 (Screen.height - PanelH) / 2f,
                 PanelW, PanelH);
         }
 
-        private void OnDestroy()
-        {
-            if (Instance == this) Instance = null;
-        }
+        // ── Key caching ───────────────────────────────────────────────────────
 
-        /// <summary>Cached parsed KeyCode from config. Re-parsed if config value changes.</summary>
-        private KeyCode _cachedMenuKey = KeyCode.G;
+        private KeyCode _cachedMenuKey    = KeyCode.G;
         private string  _cachedMenuKeyStr = "G";
 
         private KeyCode GetMenuKey()
@@ -51,51 +66,47 @@ namespace Bragi
             if (raw != _cachedMenuKeyStr)
             {
                 _cachedMenuKeyStr = raw;
-                _cachedMenuKey = System.Enum.TryParse<KeyCode>(raw, ignoreCase: true, out var k) ? k : KeyCode.G;
+                _cachedMenuKey = System.Enum.TryParse<KeyCode>(raw, ignoreCase: true, out var k)
+                    ? k : KeyCode.G;
             }
             return _cachedMenuKey;
         }
 
+        // ── Update ────────────────────────────────────────────────────────────
+
         private void Update()
         {
-            // Open / close on configured key while instrument equipped
             if (Input.GetKeyDown(GetMenuKey()) && IsInstrumentEquipped())
-            {
                 Toggle();
-            }
 
-            // Close on Escape
-            if (_isOpen && Input.GetKeyDown(KeyCode.Escape))
-            {
+            if (IsOpen && Input.GetKeyDown(KeyCode.Escape))
                 Close();
-            }
 
-            // Press Enter to play selected
-            if (_isOpen && _selectedIndex >= 0 && Input.GetKeyDown(KeyCode.Return))
-            {
+            if (IsOpen && _selectedIndex >= 0 && Input.GetKeyDown(KeyCode.Return))
                 PlaySelected();
-            }
         }
+
+        // ── IMGUI ─────────────────────────────────────────────────────────────
 
         private void OnGUI()
         {
-            if (!_isOpen) return;
+            if (!IsOpen) return;
 
-            // Block game input while UI is open
-            GUIUtility.hotControl = GUIUtility.GetControlID(FocusType.Keyboard);
+            // Re-centre if resolution changed
+            if (Event.current.type == EventType.Layout)
+                CenterPanel();
 
-            GUI.skin = GUISkin.CreateInstance<GUISkin>(); // use default skin (replaced with Jotunn skin later)
-
-            // Dark semi-transparent background overlay
-            GUI.color = new Color(0f, 0f, 0f, 0.5f);
+            // Dark overlay — no hotControl manipulation (that was the v1 click-blocking bug!)
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            // Main panel
+            // Panel background
             GUI.Box(_panelRect, "");
             GUILayout.BeginArea(_panelRect);
 
             DrawHeader();
+            DrawEnsembleBanner();
             DrawSongList();
             DrawFooter();
 
@@ -106,10 +117,45 @@ namespace Bragi
 
         private void DrawHeader()
         {
-            GUILayout.Space(8);
-            GUILayout.Label($"♪  Choose a Song  ♪", LargeLabel());
+            GUILayout.Space(10);
+            GUILayout.Label("♪  Choose a Song  ♪", LargeLabel());
             GUILayout.Label(GetInstrumentDisplayName(), SmallLabel());
+            GUILayout.Space(6);
+            DrawHorizontalLine();
             GUILayout.Space(4);
+        }
+
+        /// <summary>
+        /// Shows a prominent "Join Session" banner when another player is already playing nearby.
+        /// Clicking it immediately joins — no song selection needed.
+        /// </summary>
+        private void DrawEnsembleBanner()
+        {
+            var session = MusicSync.ActiveSession;
+            if (session == null) return;
+
+            // Find host player name
+            string hostName = "someone";
+            foreach (var p in Player.GetAllPlayers())
+            {
+                var znet = p.GetComponent<ZNetView>();
+                if (znet != null && znet.GetZDO()?.GetOwner() == session.HostPeerId)
+                {
+                    hostName = p.GetPlayerName();
+                    break;
+                }
+            }
+
+            GUILayout.Space(4);
+            GUI.backgroundColor = new Color(0.15f, 0.45f, 0.15f, 0.95f);
+            if (GUILayout.Button(
+                $"🎵  Join  {hostName}'s  \"{session.Song.Name}\"  →",
+                JoinBannerStyle(), GUILayout.Height(40)))
+            {
+                JoinSession();
+            }
+            GUI.backgroundColor = Color.white;
+            GUILayout.Space(6);
             DrawHorizontalLine();
             GUILayout.Space(4);
         }
@@ -117,28 +163,30 @@ namespace Bragi
         private void DrawSongList()
         {
             _scrollPos = GUILayout.BeginScrollView(_scrollPos,
-                GUILayout.Width(PanelW - 16), GUILayout.Height(PanelH - 120));
+                GUILayout.Width(PanelW - 16), GUILayout.Height(PanelH - 160));
 
             for (int i = 0; i < _availableSongs.Count; i++)
             {
-                var song  = _availableSongs[i];
+                var  song     = _availableSongs[i];
                 bool selected = (i == _selectedIndex);
 
                 GUI.backgroundColor = selected
-                    ? new Color(0.6f, 0.45f, 0.1f, 0.9f)  // Warm amber (selected)
-                    : new Color(0.2f, 0.15f, 0.08f, 0.8f); // Dark wood (normal)
+                    ? new Color(0.65f, 0.48f, 0.10f, 0.95f)   // warm amber
+                    : new Color(0.18f, 0.14f, 0.07f, 0.85f);  // dark wood
 
-                if (GUILayout.Button("", GUILayout.Height(52)))
+                if (GUILayout.Button("", GUILayout.Height(54)))
                     _selectedIndex = i;
 
-                // Draw song info overlaid on button
-                var btnRect = GUILayoutUtility.GetLastRect();
-                GUI.Label(new Rect(btnRect.x + 8, btnRect.y + 4, btnRect.width - 80, 20),
-                    song.Name, SongNameStyle());
-                GUI.Label(new Rect(btnRect.x + 8, btnRect.y + 24, btnRect.width - 80, 18),
+                // Overlay text on the button
+                var btn = GUILayoutUtility.GetLastRect();
+                GUI.Label(new Rect(btn.x + 10, btn.y + 5,  btn.width - 100, 22), song.Name,   SongNameStyle());
+                GUI.Label(new Rect(btn.x + 10, btn.y + 28, btn.width - 100, 17),
                     $"{song.Author}  ·  {song.Mood}", SubtitleStyle());
-                GUI.Label(new Rect(btnRect.xMax - 70, btnRect.y + 16, 64, 20),
+                GUI.Label(new Rect(btn.xMax - 90, btn.y + 18, 80, 18),
                     FormatDuration(song.Duration), DurationStyle());
+
+                // Stem indicator: small dots per instrument that has a dedicated stem
+                DrawStemDots(song, btn);
 
                 GUI.backgroundColor = Color.white;
                 GUILayout.Space(2);
@@ -146,55 +194,100 @@ namespace Bragi
 
             if (_availableSongs.Count == 0)
             {
-                GUILayout.Label("No songs found.\nAdd .json + .ogg files to:\nBepInEx/config/Bragi/songs/", SmallLabel());
+                GUILayout.Label(
+                    "No songs found.\nAdd .json + .ogg files to:\n" +
+                    "BepInEx/config/Bragi/songs/",
+                    SmallLabel());
             }
 
             GUILayout.EndScrollView();
         }
 
+        /// <summary>Draws colored dots showing which instruments have dedicated stems for this song.</summary>
+        private static void DrawStemDots(SongData song, Rect btnRect)
+        {
+            if (song.Tracks == null || song.Tracks.Count == 0) return;
+
+            float dotX = btnRect.x + 10;
+            float dotY = btnRect.yMax - 12;
+
+            foreach (InstrumentType instr in System.Enum.GetValues(typeof(InstrumentType)))
+            {
+                if (!song.HasStemFor(instr)) continue;
+
+                GUI.color = instr switch
+                {
+                    InstrumentType.BoneFlute => new Color(0.6f, 0.9f, 0.6f),
+                    InstrumentType.Lyre      => new Color(0.9f, 0.85f, 0.4f),
+                    InstrumentType.JawHarp   => new Color(0.7f, 0.5f, 0.9f),
+                    _                        => Color.white,
+                };
+                GUI.DrawTexture(new Rect(dotX, dotY, 8, 8), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                dotX += 12;
+            }
+        }
+
         private void DrawFooter()
         {
             DrawHorizontalLine();
-            GUILayout.Space(4);
+            GUILayout.Space(6);
             GUILayout.BeginHorizontal();
 
-            GUI.enabled = _selectedIndex >= 0;
-            if (GUILayout.Button("▶  Play", GUILayout.Height(32), GUILayout.Width(140)))
+            // Play button — enabled only when a song is selected
+            GUI.enabled = (_selectedIndex >= 0);
+            if (GUILayout.Button("▶  Play", GUILayout.Height(34), GUILayout.Width(130)))
                 PlaySelected();
             GUI.enabled = true;
 
+            // Stop button — visible while playing
             if (SongPlayer.Instance?.IsPlaying == true)
             {
-                if (GUILayout.Button("■  Stop", GUILayout.Height(32), GUILayout.Width(100)))
+                if (GUILayout.Button("■  Stop", GUILayout.Height(34), GUILayout.Width(90)))
                     SongPlayer.Instance.StopPlaying();
             }
 
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("✕", GUILayout.Height(32), GUILayout.Width(36)))
+
+            if (GUILayout.Button("✕", GUILayout.Height(34), GUILayout.Width(34)))
                 Close();
 
             GUILayout.EndHorizontal();
-            GUILayout.Space(6);
+            GUILayout.Space(8);
         }
 
         // ── Actions ───────────────────────────────────────────────────────────
 
         public void Open(InstrumentType instrumentType)
         {
-            _availableSongs  = SongLibrary.GetSongsForInstrument(instrumentType);
-            _selectedIndex   = _availableSongs.Count > 0 ? 0 : -1;
-            _scrollPos       = Vector2.zero;
-            _isOpen          = true;
+            _availableSongs = SongLibrary.GetSongsForInstrument(instrumentType);
+            _selectedIndex  = _availableSongs.Count > 0 ? 0 : -1;
+            _scrollPos      = Vector2.zero;
+            IsOpen          = true;
+
+            // Unlock cursor so the player can click
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible   = true;
         }
 
         public void Close()
         {
-            _isOpen = false;
+            IsOpen = false;
+
+            // Re-lock cursor for normal play
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible   = false;
+        }
+
+        /// <summary>Close without toggling — used in OnDestroy to ensure cleanup.</summary>
+        private void ForceClose()
+        {
+            if (IsOpen) Close();
         }
 
         public void Toggle()
         {
-            if (_isOpen) Close();
+            if (IsOpen) Close();
             else
             {
                 var type = GetEquippedInstrumentType();
@@ -209,11 +302,20 @@ namespace Bragi
             var player = SongPlayer.Instance;
             if (player == null) return;
 
-            player.Play(song);
+            player.StartNewSession(song);
             Close();
         }
 
-        // ── Instrument detection ──────────────────────────────────────────────
+        private void JoinSession()
+        {
+            var player = SongPlayer.Instance;
+            if (player == null) return;
+
+            player.JoinActiveSession();
+            Close();
+        }
+
+        // ── Instrument Detection ──────────────────────────────────────────────
 
         private static bool IsInstrumentEquipped()
         {
@@ -227,8 +329,8 @@ namespace Bragi
         {
             var player = Player.m_localPlayer;
             if (player == null) return null;
-            var items = player.GetInventory().GetEquippedItems();
-            var item = items.Find(i => InstrumentDefinitions.IsInstrument(i.m_dropPrefab?.name ?? ""));
+            var items  = player.GetInventory().GetEquippedItems();
+            var item   = items.Find(i => InstrumentDefinitions.IsInstrument(i.m_dropPrefab?.name ?? ""));
             if (item == null) return null;
             return InstrumentDefinitions.GetType(item.m_dropPrefab?.name ?? "");
         }
@@ -267,7 +369,7 @@ namespace Bragi
         {
             fontSize = 18, fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = new Color(0.95f, 0.8f, 0.4f) }
+            normal = { textColor = new Color(0.95f, 0.80f, 0.40f) }
         };
 
         private static GUIStyle SmallLabel() => new GUIStyle(GUI.skin.label)
@@ -276,22 +378,49 @@ namespace Bragi
             normal = { textColor = new Color(0.75f, 0.68f, 0.55f) }
         };
 
+        private static GUIStyle JoinBannerStyle() => new GUIStyle(GUI.skin.button)
+        {
+            fontSize = 13, fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal  = { textColor = new Color(0.85f, 1.0f, 0.85f) },
+            hover   = { textColor = Color.white },
+        };
+
         private static GUIStyle SongNameStyle() => new GUIStyle(GUI.skin.label)
         {
             fontSize = 13, fontStyle = FontStyle.Bold,
-            normal = { textColor = new Color(0.95f, 0.9f, 0.8f) }
+            normal = { textColor = new Color(0.95f, 0.90f, 0.80f) }
         };
 
         private static GUIStyle SubtitleStyle() => new GUIStyle(GUI.skin.label)
         {
             fontSize = 10,
-            normal = { textColor = new Color(0.7f, 0.65f, 0.5f) }
+            normal = { textColor = new Color(0.70f, 0.65f, 0.50f) }
         };
 
         private static GUIStyle DurationStyle() => new GUIStyle(GUI.skin.label)
         {
             fontSize = 11, alignment = TextAnchor.MiddleRight,
-            normal = { textColor = new Color(0.6f, 0.8f, 0.6f) }
+            normal = { textColor = new Color(0.60f, 0.80f, 0.60f) }
         };
+    }
+
+    // ── Harmony: block player input while song selection UI is open ────────────
+
+    /// <summary>
+    /// Hooks PlayerController.InInventoryEtc() — the game checks this method to determine
+    /// whether the player is currently in a menu (inventory, map, chat, etc.).
+    /// Returning true here prevents weapon swings, jumping, and camera panning while
+    /// the Song Selection UI is open, matching the behaviour of any native Valheim menu.
+    /// </summary>
+    [HarmonyPatch(typeof(PlayerController), "InInventoryEtc")]
+    internal static class BlockInputWhileUIOpenPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(ref bool __result)
+        {
+            if (SongSelectUI.IsOpen)
+                __result = true;
+        }
     }
 }

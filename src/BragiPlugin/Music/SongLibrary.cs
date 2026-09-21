@@ -12,8 +12,13 @@ namespace Bragi
     /// <summary>
     /// Scans the BepInEx config/Bragi/songs/ directory for *.json song definition files,
     /// deserializes them into SongData objects, and loads matching audio clips from either:
-    ///   1. The embedded bragiassets AssetBundle (for bundled songs)
-    ///   2. Loose .ogg / .wav files alongside the JSON (for user-added songs)
+    ///   1. Loose .ogg / .wav files alongside the JSON (for user-added songs)
+    ///
+    /// Multi-Track / Stem Support:
+    ///   LoadClip(song, instrumentType, callback) resolves which audio file to load
+    ///   based on the equipped instrument — using the stem defined in song.Tracks, or
+    ///   falling back to song.AudioFile for legacy single-file songs.
+    ///   Loaded clips are cached in SongData.StemClips keyed by filename.
     ///
     /// Other mods can drop JSON + audio files into the songs folder to add new songs
     /// without touching Bragi's code. This is the extensibility hook.
@@ -93,20 +98,34 @@ namespace Bragi
         // ── Audio Clip Loading ────────────────────────────────────────────────
 
         /// <summary>
-        /// Loads the AudioClip for a song asynchronously using UnityWebRequest.
-        /// Supports .ogg and .wav files located in the same folder as the JSON.
+        /// Loads the AudioClip for a song and a specific instrument type (stem) asynchronously.
+        /// Resolves the correct audio file: stem file from song.Tracks if available for
+        /// the given instrument, otherwise falls back to song.AudioFile.
+        /// Loaded clips are cached in song.StemClips — subsequent calls return the cached clip.
         /// </summary>
-        public static IEnumerator LoadClip(SongData song, Action<AudioClip?> onLoaded)
+        public static IEnumerator LoadClip(SongData song, InstrumentType? instrument,
+            Action<AudioClip?> onLoaded)
         {
-            if (song.Clip != null)
+            // Resolve which audio file we need for this instrument
+            var audioFileName = song.GetAudioFileForInstrument(instrument);
+
+            if (string.IsNullOrEmpty(audioFileName))
             {
-                onLoaded(song.Clip);
+                BragiPlugin.Log.LogWarning($"No audio file defined for song '{song.Id}'.");
+                onLoaded(null);
+                yield break;
+            }
+
+            // Check cache first
+            if (song.StemClips.TryGetValue(audioFileName, out var cached))
+            {
+                onLoaded(cached);
                 yield break;
             }
 
             // Try to find the audio file next to the JSON
             var dir = Path.GetDirectoryName(song.SourcePath) ?? SongsDirectory;
-            var audioPath = Path.Combine(dir, song.AudioFile);
+            var audioPath = Path.Combine(dir, audioFileName);
 
             if (!File.Exists(audioPath))
             {
@@ -120,7 +139,7 @@ namespace Bragi
                 : AudioType.WAV;
 
             using var request = UnityWebRequestMultimedia.GetAudioClip(
-                "file://" + audioPath.Replace('\\', '/'), audioType);
+                "file:///" + audioPath.Replace('\\', '/'), audioType);
 
             yield return request.SendWebRequest();
 
@@ -132,8 +151,10 @@ namespace Bragi
             }
 
             var clip = DownloadHandlerAudioClip.GetContent(request);
-            clip.name = song.Id;
-            song.Clip = clip;
+            clip.name = $"{song.Id}_{audioFileName}";
+
+            // Cache it for reuse
+            song.StemClips[audioFileName] = clip;
             onLoaded(clip);
         }
 

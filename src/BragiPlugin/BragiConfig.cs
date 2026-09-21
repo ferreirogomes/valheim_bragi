@@ -13,10 +13,18 @@ namespace Bragi
         public static ConfigEntry<float> MasterVolume = null!;
         public static ConfigEntry<float> MusicRange   = null!;
 
+        /// <summary>When true, Valheim's background ambient/music is ducked while instruments play.</summary>
+        public static ConfigEntry<bool> DuckGameMusic = null!;
+
         // ── Bard Buff ─────────────────────────────────────────────────────────
         public static ConfigEntry<bool>  BuffEnabled       = null!;
         public static ConfigEntry<float> BuffRadius        = null!;
         public static ConfigEntry<float> BuffDuration      = null!;
+
+        /// <summary>
+        /// Bonus stamina regen multiplier added to the vanilla SE_Rested effect when listening.
+        /// (0.15 = +15% on top of whatever vanilla Rested gives.)
+        /// </summary>
         public static ConfigEntry<float> StaminaRegenBonus = null!;
 
         // ── UI ────────────────────────────────────────────────────────────────
@@ -34,23 +42,29 @@ namespace Bragi
                 new ConfigDescription("Radius in metres within which other players hear your music.",
                     new AcceptableValueRange<float>(5f, 100f)));
 
+            DuckGameMusic = cfg.Bind(
+                "Audio", "DuckGameMusic", true,
+                "Reduce Valheim's background ambient music volume while instruments are playing, " +
+                "so it doesn't clash with the performed song.");
+
             BuffEnabled = cfg.Bind(
                 "BardBuff", "Enabled", true,
-                "Enable the Skald's Blessing stamina/comfort buff for nearby players.");
+                "Enable the bard buff: playing music refreshes the vanilla Rested status effect " +
+                "for nearby players.");
 
             BuffRadius = cfg.Bind(
                 "BardBuff", "Radius", 15f,
-                new ConfigDescription("Radius in metres of the Skald's Blessing buff.",
+                new ConfigDescription("Radius in metres of the bard Rested-extension buff.",
                     new AcceptableValueRange<float>(2f, 50f)));
 
             BuffDuration = cfg.Bind(
                 "BardBuff", "Duration", 60f,
-                new ConfigDescription("How long (seconds) Skald's Blessing persists after music stops.",
+                new ConfigDescription("How long (seconds) the Rested buff persists naturally after being granted.",
                     new AcceptableValueRange<float>(10f, 300f)));
 
             StaminaRegenBonus = cfg.Bind(
                 "BardBuff", "StaminaRegenBonus", 0.15f,
-                new ConfigDescription("Stamina regen percentage bonus from Skald's Blessing (0.15 = +15%).",
+                new ConfigDescription("Extra stamina regen percentage on top of the vanilla Rested buff (0.15 = +15%).",
                     new AcceptableValueRange<float>(0f, 1f)));
 
             OpenMenuKey = cfg.Bind(
