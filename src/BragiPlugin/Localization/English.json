@@ -4,5 +4,13 @@
   "item_bragi_boneflute":      "Bone Flute",
   "item_bragi_boneflute_desc": "Carved from the leg bone of a deer. Among the most common musical finds from Viking-Age Scandinavia. A haunting, breathy tone.",
   "item_bragi_jawharp":        "Jaw Harp",
-  "item_bragi_jawharp_desc":   "A small iron instrument held against the teeth and plucked. Produces a buzzing, resonant drone said to induce trance states for seidr rituals."
+  "item_bragi_jawharp_desc":   "A small iron instrument held against the teeth and plucked. Produces a buzzing, resonant drone said to induce trance states for seidr rituals.",
+
+  "item_foragersnose":         "Forager's Nose",
+  "item_foragersnose_desc":    "A bundle of dried herbs and berries strung on a cord. Worn around the neck, it lets you sense nearby forage — berries, mushrooms, thistle and flint — through a faint hum and marks them on your map.",
+
+  "forager_berries":           "Berries",
+  "forager_mushrooms":         "Mushroom",
+  "forager_plants":            "Plant",
+  "forager_minerals":          "Flint"
 }

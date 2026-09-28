@@ -35,6 +35,7 @@ namespace Bragi
 
             // Load configuration entries first
             BragiConfig.Init(Config);
+            ForagerConfig.Init(Config);
 
             // Patch game methods via Harmony
             _harmony = new Harmony(PluginGUID);
@@ -42,6 +43,9 @@ namespace Bragi
 
             // Register custom items and recipes via Jotunn
             InstrumentRegistry.Register();
+
+            // Register the Forager's Nose radar item
+            ForagerItem.Register();
 
             // Initialize the song library (scans config folder)
             SongLibrary.Init();
