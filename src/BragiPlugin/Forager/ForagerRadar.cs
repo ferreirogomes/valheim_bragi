@@ -54,6 +54,7 @@ namespace Bragi
         private Coroutine? _scanLoop;
         private static AudioClip? _pingSfx;
         private readonly Collider[] _colliderBuffer = new Collider[256];
+        private bool _sfxAttempted;  // guard so we only try loading the SFX once
 
         // ── Unity lifecycle ───────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ namespace Bragi
 
                 var results = FindNearbyPickables(player.transform.position);
 
-                BragiPlugin.Log.LogInfo(
+                BragiPlugin.Log.LogDebug(
                     $"🌿 Radar scan: found {results.Count} pickable(s) within {ForagerConfig.ScanRadius.Value}m.");
 
                 RefreshPins(results);
@@ -209,7 +210,7 @@ namespace Bragi
                     false);     // isChecked
 
                 _pins[id] = pin;
-                BragiPlugin.Log.LogInfo($"🌿 Pin added at {go.transform.position} [{category}]");
+                BragiPlugin.Log.LogDebug($"🌿 Pin added at {go.transform.position} [{category}]");
             }
         }
 
@@ -235,12 +236,13 @@ namespace Bragi
             float radius = ForagerConfig.ScanRadius.Value;
             float t      = 1f - Mathf.Clamp01(nearest / radius);
 
-            if (_pingSfx == null)
+            if (_pingSfx == null && !_sfxAttempted)
             {
+                _sfxAttempted = true;
                 _pingSfx = LoadWishbonePingClip();
                 BragiPlugin.Log.LogInfo(_pingSfx != null
                     ? "🌿 Wishbone SFX loaded successfully."
-                    : "🌿 Wishbone SFX not found — no audio feedback.");
+                    : "🌿 Wishbone SFX not found — continuing without audio.");
             }
 
             if (_pingSfx == null) return;
