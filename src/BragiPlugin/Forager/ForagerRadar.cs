@@ -10,17 +10,12 @@ namespace Bragi
     /// Every PulseInterval seconds it:
     ///   1. Self-gates: skips if Forager's Nose isn't equipped.
     ///   2. Physics.OverlapSphere → walks up to ZNetView root → checks prefab name.
-    ///   3. Updates minimap pins for every live (unpicked) pickable in range.
+    ///   3. Updates minimap pins for every live (unpicked) harvestable food resource in range.
     ///   4. Plays a proximity-scaled ping SFX borrowed from the Wishbone.
-    ///
-    /// Key fix over previous version:
-    ///   OverlapSphere returns the *collider's* GameObject, which is often a child
-    ///   (e.g. "_TriggerHit"). We must walk up to the ZNetView root to get the
-    ///   actual prefab name (e.g. "BlueberryBush").
     /// </summary>
     public class ForagerRadar : MonoBehaviour
     {
-        // ── Prefab name sets (vanilla Valheim) ────────────────────────────────
+        // ── Prefab name sets for harvestable food resources ──────────────────
 
         private static readonly HashSet<string> BerryPrefabs = new HashSet<string>
         {
@@ -29,18 +24,15 @@ namespace Bragi
 
         private static readonly HashSet<string> MushroomPrefabs = new HashSet<string>
         {
-            "Pickable_Mushroom", "Pickable_Mushroom_blue", "Pickable_Mushroom_yellow",
+            "Pickable_Mushroom",
+            "Pickable_Mushroom_blue",
+            "Pickable_Mushroom_yellow",
+            "Pickable_Mushroom_JotunPuffs",
+            "Pickable_Mushroom_Magecap",
         };
 
-        private static readonly HashSet<string> ThistlePrefabs = new HashSet<string>
-        {
-            "Pickable_Thistle", "Pickable_Dandelion",
-        };
-
-        private static readonly HashSet<string> FlintStonePrefabs = new HashSet<string>
-        {
-            "Pickable_Flint", "Pickable_Stone",
-        };
+        // Cache for dynamic prefab classification (null = not a food resource)
+        private static readonly Dictionary<string, string?> FoodCategoryCache = new Dictionary<string, string?>();
 
         // ZDO key the Pickable class uses for harvested state
         private static readonly int s_pickedKey = "picked".GetHashCode();
@@ -61,7 +53,7 @@ namespace Bragi
         private void OnEnable()
         {
             _scanLoop = StartCoroutine(ScanLoop());
-            BragiPlugin.Log.LogInfo("🌿 ForagerRadar started.");
+            BragiPlugin.Log.LogInfo("ForagerRadar started.");
         }
 
         private void OnDisable()
@@ -69,7 +61,7 @@ namespace Bragi
             if (_scanLoop != null) StopCoroutine(_scanLoop);
             _scanLoop = null;
             ClearAllPins();
-            BragiPlugin.Log.LogInfo("🌿 ForagerRadar stopped.");
+            BragiPlugin.Log.LogInfo("ForagerRadar stopped.");
         }
 
         // ── Scan loop ─────────────────────────────────────────────────────────
@@ -92,7 +84,7 @@ namespace Bragi
                 var results = FindNearbyPickables(player.transform.position);
 
                 BragiPlugin.Log.LogDebug(
-                    $"🌿 Radar scan: found {results.Count} pickable(s) within {ForagerConfig.ScanRadius.Value}m.");
+                    $"Radar scan: found {results.Count} harvestable food resource(s) within {ForagerConfig.ScanRadius.Value}m.");
 
                 RefreshPins(results);
                 if (results.Count > 0)
@@ -133,13 +125,15 @@ namespace Bragi
                 var col = _colliderBuffer[i];
                 if (col == null) continue;
 
-                // ── KEY FIX: walk UP to the ZNetView root ─────────────────────
-                // col.gameObject is a collider child (e.g. "_TriggerHit"), NOT
-                // the prefab root. The prefab name lives on the ZNetView root.
+                // Walk UP to the ZNetView root (collider may be a child like "_TriggerHit")
                 var znv = col.gameObject.GetComponentInParent<ZNetView>();
                 if (znv == null) continue;
 
                 var rootGo = znv.gameObject;
+
+                // Deduplicate by root instance ID early
+                int id = rootGo.GetInstanceID();
+                if (seenIds.Contains(id)) continue;
 
                 // Strip "(Clone)" if present
                 string rawName = rootGo.name;
@@ -148,32 +142,60 @@ namespace Bragi
                     ? rawName.Substring(0, cloneIdx).TrimEnd()
                     : rawName;
 
-                string? category = GetCategory(prefabName);
+                string? category = GetCategory(rootGo, prefabName);
                 if (category == null) continue;
 
-                // Skip already-picked objects (ZDO is the authoritative source)
-                if (znv.IsValid())
-                {
-                    if (znv.GetZDO().GetBool(s_pickedKey, false)) continue;
-                }
+                // Skip already-picked objects
+                var pickable = rootGo.GetComponentInChildren<Pickable>();
+                if (pickable != null && (pickable.GetPicked() || !pickable.CanBePicked())) continue;
 
-                // Deduplicate by root instance ID (one bush has several colliders)
-                int id = rootGo.GetInstanceID();
-                if (!seenIds.Add(id)) continue;
+                if (znv.IsValid() && znv.GetZDO().GetBool(s_pickedKey, false)) continue;
 
+                seenIds.Add(id);
                 found.Add((rootGo, category));
             }
 
             return found;
         }
 
-        private string? GetCategory(string prefabName)
+        private string? GetCategory(GameObject rootGo, string prefabName)
         {
-            if (ForagerConfig.DetectBerries.Value    && BerryPrefabs.Contains(prefabName))    return "$forager_berries";
-            if (ForagerConfig.DetectMushrooms.Value   && MushroomPrefabs.Contains(prefabName))  return "$forager_mushrooms";
-            if (ForagerConfig.DetectThistle.Value     && ThistlePrefabs.Contains(prefabName))   return "$forager_plants";
-            if (ForagerConfig.DetectFlintStone.Value  && FlintStonePrefabs.Contains(prefabName)) return "$forager_minerals";
-            return null;
+            if (!FoodCategoryCache.TryGetValue(prefabName, out var category))
+            {
+                if (BerryPrefabs.Contains(prefabName))
+                {
+                    category = "$forager_berries";
+                }
+                else if (MushroomPrefabs.Contains(prefabName))
+                {
+                    category = "$forager_mushrooms";
+                }
+                else
+                {
+                    // Dynamic check: verify if the object is a Pickable that yields edible food
+                    var pickable = rootGo.GetComponentInChildren<Pickable>();
+                    if (pickable != null && pickable.m_itemPrefab != null)
+                    {
+                        var itemDrop = pickable.m_itemPrefab.GetComponent<ItemDrop>();
+                        var shared = itemDrop?.m_itemData?.m_shared;
+                        if (shared != null && (shared.m_food > 0f || shared.m_foodStamina > 0f || shared.m_foodEitr > 0f ||
+                            (shared.m_itemType == ItemDrop.ItemData.ItemType.Consumable && !shared.m_isDrink)))
+                        {
+                            category = prefabName.ToLowerInvariant().Contains("mushroom")
+                                ? "$forager_mushrooms"
+                                : "$forager_berries";
+                        }
+                    }
+                }
+
+                FoodCategoryCache[prefabName] = category;
+            }
+
+            if (category == null) return null;
+            if (category == "$forager_berries" && !ForagerConfig.DetectBerries.Value) return null;
+            if (category == "$forager_mushrooms" && !ForagerConfig.DetectMushrooms.Value) return null;
+
+            return category;
         }
 
         // ── Minimap pins ──────────────────────────────────────────────────────
@@ -210,7 +232,7 @@ namespace Bragi
                     false);     // isChecked
 
                 _pins[id] = pin;
-                BragiPlugin.Log.LogDebug($"🌿 Pin added at {go.transform.position} [{category}]");
+                BragiPlugin.Log.LogDebug($"Pin added at {go.transform.position} [{category}]");
             }
         }
 
@@ -241,8 +263,8 @@ namespace Bragi
                 _sfxAttempted = true;
                 _pingSfx = LoadWishbonePingClip();
                 BragiPlugin.Log.LogInfo(_pingSfx != null
-                    ? "🌿 Wishbone SFX loaded successfully."
-                    : "🌿 Wishbone SFX not found — continuing without audio.");
+                    ? "Wishbone SFX loaded successfully."
+                    : "Wishbone SFX not found — continuing without audio.");
             }
 
             if (_pingSfx == null) return;
@@ -271,13 +293,12 @@ namespace Bragi
         {
             if (ObjectDB.instance == null)
             {
-                BragiPlugin.Log.LogInfo("🌿 LoadWishbonePingClip: ObjectDB not ready.");
+                BragiPlugin.Log.LogInfo("LoadWishbonePingClip: ObjectDB not ready.");
                 return null;
             }
 
             // SE_Finder is the StatusEffect class used by the Wishbone.
             // ObjectDB hashes are computed with the stable (djb2) hash, NOT GetHashCode().
-            // Try both variants to be safe.
             SE_Finder? se = null;
             foreach (var effect in ObjectDB.instance.m_StatusEffects)
             {
@@ -290,7 +311,7 @@ namespace Bragi
 
             if (se == null)
             {
-                BragiPlugin.Log.LogInfo("🌿 LoadWishbonePingClip: SE_Finder 'Wishbone' not found in ObjectDB.");
+                BragiPlugin.Log.LogInfo("LoadWishbonePingClip: SE_Finder 'Wishbone' not found in ObjectDB.");
                 return null;
             }
 

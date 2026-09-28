@@ -30,7 +30,7 @@ namespace Bragi
         {
             // Defer item creation until vanilla prefabs (incl. Wishbone) are loaded
             PrefabManager.OnVanillaPrefabsAvailable += CreateItem;
-            BragiPlugin.Log.LogInfo("🌿 Forager's Nose queued for registration.");
+            BragiPlugin.Log.LogInfo("Forager's Nose queued for registration.");
         }
 
         private static void CreateItem()
@@ -59,7 +59,7 @@ namespace Bragi
             TweakSharedData(item);
 
             ItemManager.Instance.AddItem(item);
-            BragiPlugin.Log.LogInfo("🌿 Forager's Nose item registered.");
+            BragiPlugin.Log.LogInfo("Forager's Nose item registered.");
         }
 
         /// <summary>
@@ -72,7 +72,7 @@ namespace Bragi
             var shared = item.ItemPrefab?.GetComponent<ItemDrop>()?.m_itemData?.m_shared;
             if (shared == null)
             {
-                BragiPlugin.Log.LogWarning("🌿 Could not tweak Forager's Nose shared data — ItemDrop missing.");
+                BragiPlugin.Log.LogWarning("Could not tweak Forager's Nose shared data — ItemDrop missing.");
                 return;
             }
 
@@ -81,7 +81,7 @@ namespace Bragi
             shared.m_equipStatusEffect = null;
             shared.m_setStatusEffect   = null;
 
-            BragiPlugin.Log.LogInfo("🌿 Forager's Nose shared data tweaked.");
+            BragiPlugin.Log.LogInfo("Forager's Nose shared data tweaked.");
         }
     }
 
@@ -98,7 +98,7 @@ namespace Bragi
             if (__instance.GetComponent<ForagerRadar>() == null)
             {
                 __instance.gameObject.AddComponent<ForagerRadar>();
-                BragiPlugin.Log.LogInfo("🌿 ForagerRadar attached to local player.");
+                BragiPlugin.Log.LogInfo("ForagerRadar attached to local player.");
             }
         }
     }

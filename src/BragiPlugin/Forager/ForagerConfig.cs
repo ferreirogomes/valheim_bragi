@@ -19,8 +19,6 @@ namespace Bragi
         // ── Category toggles ─────────────────────────────────────────────────
         public static ConfigEntry<bool> DetectBerries    = null!;
         public static ConfigEntry<bool> DetectMushrooms  = null!;
-        public static ConfigEntry<bool> DetectThistle    = null!;
-        public static ConfigEntry<bool> DetectFlintStone = null!;
 
         /// <summary>Maximum number of minimap pins shown at once (perf guard).</summary>
         public static ConfigEntry<int> MaxPins = null!;
@@ -45,15 +43,7 @@ namespace Bragi
 
             DetectMushrooms = cfg.Bind(
                 "Forager", "DetectMushrooms", true,
-                "Detect yellow, blue and common mushrooms.");
-
-            DetectThistle = cfg.Bind(
-                "Forager", "DetectThistle", true,
-                "Detect thistle and dandelion plants.");
-
-            DetectFlintStone = cfg.Bind(
-                "Forager", "DetectFlintStone", true,
-                "Detect surface flint and stone pickables.");
+                "Detect wild mushrooms (red, yellow, blue, jotun puffs, magecap).");
 
             MaxPins = cfg.Bind(
                 "Forager", "MaxPins", 20,
