@@ -9,30 +9,35 @@ namespace Bragi
     /// <summary>
     /// Registers the "Forager's Nose" craftable item.
     ///
-    /// Item stats mirror the vanilla Wishbone philosophy:
-    ///   - Utility slot item (doesn't take weapon/armour slot)
-    ///   - Crafted at the Workbench with foraged materials
-    ///   - Zero stat bonuses; its value is the radar alone
+    /// Timing note:
+    ///   Jotunn's CustomItem clone-from-base requires the vanilla prefab
+    ///   (Wishbone) to already exist in ZNetScene. That only happens AFTER
+    ///   the game finishes loading its asset bundles, NOT during plugin Awake().
+    ///   We therefore defer AddItem into PrefabManager.OnVanillaPrefabsAvailable,
+    ///   which is the canonical Jotunn hook for exactly this case.
     ///
-    /// Crafting recipe (Workbench, level 1):
-    ///   10× Raspberry + 10× Blueberry + 5× Mushroom + 2× Dandelion
-    ///
-    /// Activation strategy (no EquipItem/UnequipItem patches needed):
-    ///   <see cref="ForagerRadar"/> is attached to the local player on spawn
-    ///   via a patch on <see cref="Player.OnSpawned"/> (same approach as BardBuff).
-    ///   The radar's own ScanLoop checks every pulse whether the utility slot
-    ///   holds the Forager's Nose — if yes it scans, if no it clears pins and
-    ///   waits. This avoids fragile method-name patches that break on updates.
+    /// Activation strategy:
+    ///   ForagerSpawnPatch attaches ForagerRadar to the local player on spawn.
+    ///   The radar's ScanLoop self-gates by checking the utility slot each pulse.
     /// </summary>
     public static class ForagerItem
     {
-        // Internal prefab name — must match localization tokens in English.json
         public const string ItemPrefabName = "ForagersNose";
 
         // ── Registration ─────────────────────────────────────────────────────
 
         public static void Register()
         {
+            // Defer item creation until vanilla prefabs (incl. Wishbone) are loaded
+            PrefabManager.OnVanillaPrefabsAvailable += CreateItem;
+            BragiPlugin.Log.LogInfo("🌿 Forager's Nose queued for registration.");
+        }
+
+        private static void CreateItem()
+        {
+            // Unsubscribe immediately — this must only run once per session
+            PrefabManager.OnVanillaPrefabsAvailable -= CreateItem;
+
             var itemConfig = new ItemConfig
             {
                 Name        = "$item_foragersnose",
@@ -42,51 +47,46 @@ namespace Bragi
                 {
                     new RequirementConfig("Raspberry",   10),
                     new RequirementConfig("Blueberries", 10),
-                    new RequirementConfig("Mushroom",    5),
-                    new RequirementConfig("Dandelion",   2),
+                    new RequirementConfig("Mushroom",     5),
+                    new RequirementConfig("Dandelion",    2),
                 },
             };
 
-            // Clone the Wishbone so we inherit the correct equipment slot and icon
+            // Clone the Wishbone — vanilla prefab is now guaranteed to exist
             var item = new CustomItem(ItemPrefabName, "Wishbone", itemConfig);
+
+            // Strip the SE_Finder before Jotunn registers it
+            TweakSharedData(item);
+
             ItemManager.Instance.AddItem(item);
-
-            // Strip the vanilla SE_Finder from the clone (our MonoBehaviour handles it)
-            ItemManager.OnItemsRegistered += TweakItemPrefab;
-
             BragiPlugin.Log.LogInfo("🌿 Forager's Nose item registered.");
         }
 
-        private static void TweakItemPrefab()
+        /// <summary>
+        /// Overrides name/description tokens on the cloned ItemDrop shared data
+        /// and removes the vanilla Wishbone SE_Finder so our MonoBehaviour
+        /// handles detection instead (no double-pinging silver veins).
+        /// </summary>
+        private static void TweakSharedData(CustomItem item)
         {
-            var prefab = PrefabManager.Instance.GetPrefab(ItemPrefabName);
-            if (prefab == null)
+            var shared = item.ItemPrefab?.GetComponent<ItemDrop>()?.m_itemData?.m_shared;
+            if (shared == null)
             {
-                BragiPlugin.Log.LogWarning("🌿 ForagersNose prefab not found during TweakItemPrefab.");
+                BragiPlugin.Log.LogWarning("🌿 Could not tweak Forager's Nose shared data — ItemDrop missing.");
                 return;
             }
 
-            var itemDrop = prefab.GetComponent<ItemDrop>();
-            if (itemDrop == null) return;
-
-            var shared = itemDrop.m_itemData.m_shared;
             shared.m_name        = "$item_foragersnose";
             shared.m_description = "$item_foragersnose_desc";
-
-            // Remove the cloned Wishbone SE_Finder — ForagerRadar handles detection
             shared.m_equipStatusEffect = null;
             shared.m_setStatusEffect   = null;
 
-            BragiPlugin.Log.LogInfo("🌿 Forager's Nose prefab tweaked.");
+            BragiPlugin.Log.LogInfo("🌿 Forager's Nose shared data tweaked.");
         }
     }
 
-    // ── Attach ForagerRadar on spawn (same pattern as BardBuff) ─────────────
+    // ── Attach ForagerRadar on spawn ──────────────────────────────────────────
 
-    /// <summary>
-    /// Piggybacks on the existing PlayerSpawnPatch in BardBuff.cs is NOT used here
-    /// to avoid double-patch conflicts. We declare our own postfix on OnSpawned.
-    /// </summary>
     [HarmonyPatch(typeof(Player), nameof(Player.OnSpawned))]
     internal static class ForagerSpawnPatch
     {
@@ -95,8 +95,6 @@ namespace Bragi
         {
             if (!__instance.IsOwner()) return;
 
-            // Attach once — the component persists across equip/unequip cycles.
-            // ForagerRadar.ScanLoop checks the utility slot itself each pulse.
             if (__instance.GetComponent<ForagerRadar>() == null)
             {
                 __instance.gameObject.AddComponent<ForagerRadar>();
