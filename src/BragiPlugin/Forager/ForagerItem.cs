@@ -7,9 +7,7 @@ using UnityEngine;
 namespace Bragi
 {
     /// <summary>
-    /// Registers the "Forager's Nose" craftable item and manages attaching the
-    /// <see cref="ForagerRadar"/> component to the local player when the item
-    /// is equipped in the utility slot.
+    /// Registers the "Forager's Nose" craftable item.
     ///
     /// Item stats mirror the vanilla Wishbone philosophy:
     ///   - Utility slot item (doesn't take weapon/armour slot)
@@ -19,21 +17,22 @@ namespace Bragi
     /// Crafting recipe (Workbench, level 1):
     ///   10× Raspberry + 10× Blueberry + 5× Mushroom + 2× Dandelion
     ///
-    /// Harmony patches two Player methods:
-    ///   • EquipItem  — enable radar when the charm is put on
-    ///   • UnequipItem — disable radar when the charm is taken off
+    /// Activation strategy (no EquipItem/UnequipItem patches needed):
+    ///   <see cref="ForagerRadar"/> is attached to the local player on spawn
+    ///   via a patch on <see cref="Player.OnSpawned"/> (same approach as BardBuff).
+    ///   The radar's own ScanLoop checks every pulse whether the utility slot
+    ///   holds the Forager's Nose — if yes it scans, if no it clears pins and
+    ///   waits. This avoids fragile method-name patches that break on updates.
     /// </summary>
     public static class ForagerItem
     {
-        // Internal prefab name — must match any localization tokens in English.json
+        // Internal prefab name — must match localization tokens in English.json
         public const string ItemPrefabName = "ForagersNose";
 
         // ── Registration ─────────────────────────────────────────────────────
 
         public static void Register()
         {
-            // CustomItem without an asset bundle: we build the item from scratch
-            // using Jotunn's ItemConfig DSL.
             var itemConfig = new ItemConfig
             {
                 Name        = "$item_foragersnose",
@@ -48,34 +47,22 @@ namespace Bragi
                 },
             };
 
-            // Use the vanilla Wishbone as the item base — same slot, same
-            // equipType (utility), correct inventory icon fallback.
-            // Jotunn's MockManager will resolve the vanilla prefab at runtime.
+            // Clone the Wishbone so we inherit the correct equipment slot and icon
             var item = new CustomItem(ItemPrefabName, "Wishbone", itemConfig);
-
-            // Rename it so it has a distinct identity
-            // (Jotunn clones the Wishbone prefab; we customise the clone below)
             ItemManager.Instance.AddItem(item);
 
-            // Subscribe to Jotunn's OnObjectDBReady to tweak the cloned prefab
+            // Strip the vanilla SE_Finder from the clone (our MonoBehaviour handles it)
             ItemManager.OnItemsRegistered += TweakItemPrefab;
 
             BragiPlugin.Log.LogInfo("🌿 Forager's Nose item registered.");
         }
 
-        /// <summary>
-        /// Runs after Jotunn finishes copying the Wishbone prefab so we can
-        /// override name/description tokens and remove the SE_Finder status effect
-        /// (we implement our own radar logic via ForagerRadar, not through SE_Finder,
-        /// so the item doesn't double-ping with the vanilla silver detector).
-        /// </summary>
         private static void TweakItemPrefab()
         {
             var prefab = PrefabManager.Instance.GetPrefab(ItemPrefabName);
             if (prefab == null)
             {
-                BragiPlugin.Log.LogWarning(
-                    "🌿 ForagersNose prefab not found during TweakItemPrefab.");
+                BragiPlugin.Log.LogWarning("🌿 ForagersNose prefab not found during TweakItemPrefab.");
                 return;
             }
 
@@ -83,88 +70,37 @@ namespace Bragi
             if (itemDrop == null) return;
 
             var shared = itemDrop.m_itemData.m_shared;
-
-            // Point to our localisation tokens
             shared.m_name        = "$item_foragersnose";
             shared.m_description = "$item_foragersnose_desc";
 
-            // Remove the vanilla Wishbone SE_Finder — our MonoBehaviour handles detection
-            shared.m_equipStatusEffect   = null;
-            shared.m_setStatusEffect      = null;
+            // Remove the cloned Wishbone SE_Finder — ForagerRadar handles detection
+            shared.m_equipStatusEffect = null;
+            shared.m_setStatusEffect   = null;
 
             BragiPlugin.Log.LogInfo("🌿 Forager's Nose prefab tweaked.");
         }
     }
 
-    // ── Harmony: equip / unequip hooks ────────────────────────────────────────
-
-    [HarmonyPatch(typeof(Player), nameof(Player.EquipItem))]
-    internal static class ForagerEquipPatch
-    {
-        [HarmonyPostfix]
-        private static void Postfix(Player __instance, ItemDrop.ItemData item, bool __result)
-        {
-            if (!__result) return;
-            if (!__instance.IsOwner()) return;
-
-            if (item?.m_shared?.m_name == "$item_foragersnose")
-            {
-                ForagerItemHelpers.EnableRadar(__instance);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), nameof(Player.UnequipItem))]
-    internal static class ForagerUnequipPatch
-    {
-        [HarmonyPostfix]
-        private static void Postfix(Player __instance, ItemDrop.ItemData item)
-        {
-            if (!__instance.IsOwner()) return;
-
-            if (item?.m_shared?.m_name == "$item_foragersnose")
-            {
-                ForagerItemHelpers.DisableRadar(__instance);
-            }
-        }
-    }
+    // ── Attach ForagerRadar on spawn (same pattern as BardBuff) ─────────────
 
     /// <summary>
-    /// Also disable the radar on player death so stale pins don't persist.
+    /// Piggybacks on the existing PlayerSpawnPatch in BardBuff.cs is NOT used here
+    /// to avoid double-patch conflicts. We declare our own postfix on OnSpawned.
     /// </summary>
-    [HarmonyPatch(typeof(Player), nameof(Player.OnDeath))]
-    internal static class ForagerDeathPatch
+    [HarmonyPatch(typeof(Player), nameof(Player.OnSpawned))]
+    internal static class ForagerSpawnPatch
     {
         [HarmonyPostfix]
         private static void Postfix(Player __instance)
         {
             if (!__instance.IsOwner()) return;
-            ForagerItemHelpers.DisableRadar(__instance);
-        }
-    }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    internal static class ForagerItemHelpers
-    {
-        internal static void EnableRadar(Player player)
-        {
-            var radar = player.GetComponent<ForagerRadar>();
-            if (radar == null)
-                radar = player.gameObject.AddComponent<ForagerRadar>();
-
-            // OnEnable fires automatically when component is added or re-enabled
-            radar.enabled = true;
-            BragiPlugin.Log.LogDebug("🌿 Forager radar ON.");
-        }
-
-        internal static void DisableRadar(Player player)
-        {
-            var radar = player.GetComponent<ForagerRadar>();
-            if (radar != null)
+            // Attach once — the component persists across equip/unequip cycles.
+            // ForagerRadar.ScanLoop checks the utility slot itself each pulse.
+            if (__instance.GetComponent<ForagerRadar>() == null)
             {
-                radar.enabled = false;
-                BragiPlugin.Log.LogDebug("🌿 Forager radar OFF.");
+                __instance.gameObject.AddComponent<ForagerRadar>();
+                BragiPlugin.Log.LogInfo("🌿 ForagerRadar attached to local player.");
             }
         }
     }

@@ -108,11 +108,37 @@ namespace Bragi
                 var player = Player.m_localPlayer;
                 if (player == null) continue;
 
+                // Self-gate: only scan while the Forager's Nose is in the utility slot.
+                // This avoids needing fragile EquipItem/UnequipItem patches.
+                if (!IsForagersNoseEquipped(player))
+                {
+                    // Clear any stale pins when the item is unequipped / on death
+                    if (_pins.Count > 0)
+                        ClearAllPins();
+                    continue;
+                }
+
                 var results = FindNearbyPickables(player.transform.position);
                 RefreshPins(results);
                 if (results.Count > 0)
                     PlayPingSfx(player, results);
             }
+        }
+
+        /// <summary>
+        /// Returns true if the local player currently has the Forager's Nose
+        /// equipped in their utility slot.
+        /// </summary>
+        private static bool IsForagersNoseEquipped(Player player)
+        {
+            var utilityItem = player.GetInventory()?.GetEquippedItems();
+            if (utilityItem == null) return false;
+            foreach (var item in utilityItem)
+            {
+                if (item?.m_shared?.m_name == "$item_foragersnose")
+                    return true;
+            }
+            return false;
         }
 
         // ─────────────────────────────────────────────────────────────────────
