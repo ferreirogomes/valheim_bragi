@@ -3,6 +3,8 @@
 # Build artifacts
 bin/
 obj/
+dist/
+*.zip
 *.user
 *.suo
 .vs/
