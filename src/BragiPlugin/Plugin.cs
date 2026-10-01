@@ -15,15 +15,19 @@ namespace Bragi
     /// This BepInEx plugin adds craftable Viking-era instruments (Lyre, Bone Flute, Jaw Harp)
     /// that players can use to play pre-composed Norse songs. Music is spatially synced
     /// over the network so nearby players hear it in multiplayer.
+    ///
+    /// Client-side only: the server does NOT need this mod installed.
+    /// RPCs are sent peer-to-peer between clients that have the mod;
+    /// vanilla clients and dedicated servers without Bragi simply ignore them.
     /// </summary>
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
-    [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
+    [NetworkCompatibility(CompatibilityLevel.NotEnforced, VersionStrictness.None)]
     public class BragiPlugin : BaseUnityPlugin
     {
         public const string PluginGUID    = "com.bragi.valheim";
         public const string PluginName    = "Bragi";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.2.0";
 
         internal static ManualLogSource Log = null!;
         private static Harmony _harmony = null!;

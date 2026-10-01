@@ -58,6 +58,7 @@ namespace Bragi
         /// </summary>
         public static void SendStartSession(string songId, string instrumentType)
         {
+            if (ZRoutedRpc.instance == null) return;
             double netTime = ZNet.instance != null ? ZNet.instance.GetTimeSeconds() : 0.0;
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 ZRoutedRpc.Everybody, RPC_START_SESSION, songId, netTime, instrumentType);
@@ -69,6 +70,7 @@ namespace Bragi
         /// </summary>
         public static void SendJoinSession(string songId, string instrumentType)
         {
+            if (ZRoutedRpc.instance == null) return;
             double netTime = ZNet.instance != null ? ZNet.instance.GetTimeSeconds() : 0.0;
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 ZRoutedRpc.Everybody, RPC_JOIN_SESSION, songId, netTime, instrumentType);
@@ -77,6 +79,7 @@ namespace Bragi
         /// <summary>Broadcast that the local player stopped playing (session ended or they left).</summary>
         public static void SendStopSession()
         {
+            if (ZRoutedRpc.instance == null) return;
             ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, RPC_STOP_SESSION);
             // Clear our own reference if we were the host
             if (ActiveSession?.HostPeerId == ZDOMan.GetSessionID())
@@ -177,6 +180,12 @@ namespace Bragi
     }
 
     // ── Harmony patch: register RPCs after ZNet.Awake creates ZRoutedRpc ────────
+    //
+    // Client-side safety: ZRoutedRpc silently drops incoming RPC calls whose name
+    // is not registered on the receiving end. This means a vanilla server or a
+    // server/client without Bragi will simply discard our packets — no error,
+    // no disconnect. Combined with CompatibilityLevel.NoNeedForSync in Plugin.cs,
+    // Bragi operates fully peer-to-peer between Bragi clients only.
 
     [HarmonyLib.HarmonyPatch(typeof(ZNet), "Awake")]
     internal static class ZNetAwakePatch

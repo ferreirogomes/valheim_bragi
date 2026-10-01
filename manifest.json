@@ -1,8 +1,8 @@
 {
   "name": "Bragi",
-  "version_number": "0.1.0",
+  "version_number": "0.2.0",
   "website_url": "https://github.com/ferreirogomes/valheim_bragi",
-  "description": "Play Viking-era instruments in Valheim! Craft a Lyre, Bone Flute, or Jaw Harp and perform Norse songs. Music is heard by nearby players in multiplayer. Includes Skald's Blessing bard buff.",
+  "description": "Play Viking-era instruments in Valheim! Craft a Lyre, Bone Flute, or Jaw Harp and perform Norse songs. Music is heard by nearby players in multiplayer. Client-side only — no server installation required. Includes Skald's Blessing bard buff and Forager's Nose radar item.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2202",
     "ValheimModding-Jotunn-2.21.0"
